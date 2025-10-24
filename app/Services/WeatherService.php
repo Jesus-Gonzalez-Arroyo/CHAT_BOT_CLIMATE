@@ -91,5 +91,3 @@ class WeatherService
         };
     }
 }
-
-# cGFuZ29saW4=
