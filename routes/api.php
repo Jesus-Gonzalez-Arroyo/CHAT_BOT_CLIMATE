@@ -12,5 +12,3 @@ Route::prefix('conversations')->group(function () {
 });
 
 Route::post('/messages', [MessageController::class, 'store']);
-
-# cGFuZ29saW4=
