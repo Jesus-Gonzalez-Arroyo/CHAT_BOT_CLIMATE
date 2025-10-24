@@ -86,9 +86,3 @@ La aplicación estará disponible en http://localhost:8000
 - `resources/views/` - Vistas Blade
 - `database/migrations/` - Migraciones
 - `routes/` - Definiciones de rutas
-
-## Licencia
-
-Este proyecto está licenciado bajo la Licencia MIT.
-
-# cGFuZ29saW4=
