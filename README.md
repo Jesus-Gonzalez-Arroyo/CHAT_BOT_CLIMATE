@@ -1,4 +1,4 @@
-# WeatherBot - Asistente de Clima con IA
+# Asistente de Clima con IA
 
 Un chatbot interactivo que utiliza inteligencia artificial para responder consultas sobre el clima, integrando datos en tiempo real de la API de Open-Meteo y almacenando el historial de las conversaciones.
 
@@ -12,18 +12,18 @@ Un chatbot interactivo que utiliza inteligencia artificial para responder consul
 
 ## Requisitos
 
-- PHP 8.1 o superior
+- PHP 8.2 o superior
 - Composer
 - Node.js y npm
 - MySQL
-- Clave API de OpenAI
+- ApiKey de OpenAI
 
 ## Instalación
 
 1. Clonar el repositorio:
    ```bash
-   git clone https://github.com/tu-usuario/weather-chatbot.git
-   cd weather-chatbot
+   git clone https://github.com/Jesus-Gonzalez-Arroyo/CHAT_BOT_CLIMATE
+   cd CHAT_BOT_CLIMATE
    ```
 
 2. Instalar dependencias de PHP:
@@ -49,9 +49,9 @@ Un chatbot interactivo que utiliza inteligencia artificial para responder consul
 6. Configurar el archivo .env con tus credenciales de base de datos y OpenAI:
    ```
    DB_CONNECTION=mysql
-   DB_HOST=127.0.0.1
+   DB_HOST=localhost
    DB_PORT=3306
-   DB_DATABASE=weather_chatbot
+   DB_DATABASE=laravel
    DB_USERNAME=tu_usuario
    DB_PASSWORD=tu_contraseña
 
