@@ -26,5 +26,3 @@ return new class extends Migration
         Schema::dropIfExists('messages');
     }
 };
-
-# cGFuZ29saW4=
