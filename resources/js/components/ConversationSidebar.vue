@@ -38,11 +38,22 @@
         </p>
       </div>
     </div>
+
+    <!-- Confirm Dialog -->
+    <ConfirmDialog
+      ref="confirmDialog"
+      title="Eliminar conversación"
+      message="¿Estás seguro de que deseas eliminar esta conversación? Esta acción no se puede deshacer."
+      confirm-text="Eliminar"
+      cancel-text="Cancelar"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import ConfirmDialog from './ConfirmDialog.vue';
 
 const props = defineProps({
   conversations: {
@@ -56,6 +67,9 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['select-conversation', 'create-conversation', 'delete-conversation']);
+
+const confirmDialog = ref(null);
+const conversationToDelete = ref(null);
 
 const sortedConversations = computed(() => {
   return [...props.conversations].sort((a, b) => {
@@ -88,12 +102,17 @@ const handleCreateConversation = () => {
 
 const handleSelectConversation = (conversationId) => {
   emit('select-conversation', conversationId);
-
 };
 
 const handleDelete = (conversationId) => {
-  if (confirm('¿Estás seguro de que deseas eliminar esta conversación?')) {
-    emit('delete-conversation', conversationId);
+  conversationToDelete.value = conversationId;
+  confirmDialog.value.open();
+};
+
+const confirmDelete = () => {
+  if (conversationToDelete.value) {
+    emit('delete-conversation', conversationToDelete.value);
+    conversationToDelete.value = null;
   }
 };
 </script>
