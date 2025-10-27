@@ -9,42 +9,6 @@ use App\Services\WeatherService;
 
 class OpenAIService
 {
-    private const SYSTEM_PROMPT = <<<EOT
-Eres un asistente virtual especializado en información meteorológica. Tu objetivo es ayudar a los usuarios a obtener información precisa y útil sobre el clima de manera amigable y concisa.
-
-REGLAS CRÍTICAS:
-1. Responde siempre en español
-2. Mantén un tono amable y profesional
-3. Usa emojis relevantes para hacer las respuestas más visuales
-4. **IMPORTANTE**: Cuando recibas "Datos meteorológicos ACTUALES para [Ciudad]", DEBES usar EXCLUSIVAMENTE esos datos para esa ciudad
-5. **NUNCA uses información de una ciudad anterior cuando se te pregunta por una ciudad diferente**
-6. **SIEMPRE verifica el nombre de la ciudad en los datos JSON antes de responder**
-7. Si no tienes datos meteorológicos en el mensaje, indícalo claramente
-8. Si una pregunta no está relacionada con el clima, indica amablemente que solo puedes ayudar con temas meteorológicos
-
-FORMATO DE RESPUESTA:
-- Para pronósticos actuales:
-  🌍 [Ciudad EXACTA de los datos JSON]
-  📊 Ahora:
-  - Temperatura: [current_weather.temperature]°C
-  - Condición: [interpretar weathercode]
-  - Viento: [current_weather.windspeed] km/h
-
-- Para pronósticos futuros:
-  🌍 [Ciudad EXACTA] - Próximos días
-  📅 Previsión:
-  - Máxima: [daily.temperature_2m_max[0]]°C
-  - Mínima: [daily.temperature_2m_min[0]]°C
-  - Precipitación: [daily.precipitation_sum[0]]mm
-
-PROCESO DE RESPUESTA:
-1. Lee el mensaje del usuario
-2. Busca "Datos meteorológicos ACTUALES para [Ciudad]" en el mensaje
-3. Extrae la ciudad del mensaje de datos
-4. Parsea el JSON y extrae los valores exactos
-5. Responde usando SOLO esos datos para ESA ciudad específica
-EOT;
-
     public function __construct(private WeatherService $weatherService) {}
 
     public function chat(array $messages): string
@@ -111,7 +75,7 @@ EOT;
     private function processMessages(array $messages): array
     {
         $processedMessages = [
-            ['role' => 'system', 'content' => self::SYSTEM_PROMPT]
+            ['role' => 'system', 'content' => config('prompts.weather_assistant')]
         ];
 
         $totalMessages = count($messages);
@@ -127,19 +91,16 @@ EOT;
         }
         
         if ($currentCityQuery) {
-            Log::info("Detectada consulta de ciudad: {$currentCityQuery} - Enviando SIN historial");
             
             $content = $lastMessage['content'];
             
             try {
-                Log::info("Obteniendo datos del clima FRESCOS para: {$currentCityQuery}");
                 $weatherData = $this->weatherService->getWeatherByCity($currentCityQuery);
-                Log::info("Datos del clima obtenidos para {$currentCityQuery}", ['data' => $weatherData]);
-                
+
                 $formattedData = $this->formatWeatherDataForAI($weatherData, $currentCityQuery);
 
                 $content = "Usuario pregunta: {$lastMessage['content']}\n\n" . $formattedData;
-                $content .= "\n\n⚠️ INSTRUCCIÓN CRÍTICA: Responde sobre {$currentCityQuery} usando ÚNICAMENTE los datos meteorológicos proporcionados. Ignora cualquier otra ciudad que pueda aparecer en el contexto.";
+                $content .= "\n\n INSTRUCCIÓN CRÍTICA: Responde sobre {$currentCityQuery} usando ÚNICAMENTE los datos meteorológicos proporcionados. Ignora cualquier otra ciudad que pueda aparecer en el contexto.";
             } catch (Exception $e) {
                 Log::warning("No se pudieron obtener datos del clima para: {$currentCityQuery}", [
                     'error' => $e->getMessage()
@@ -149,7 +110,6 @@ EOT;
             
             $processedMessages[] = ['role' => 'user', 'content' => $content];
         } else {
-            Log::info("Sin consulta de ciudad detectada - Usando historial limitado");
             
             $recentMessages = array_slice($messages, -3);
             
@@ -170,20 +130,12 @@ EOT;
             }
         }
 
-        Log::info("Mensajes procesados para OpenAI", [
-            'total_original' => $totalMessages,
-            'total_enviados' => count($processedMessages),
-            'tiene_ciudad' => $currentCityQuery !== null,
-            'ciudad' => $currentCityQuery
-        ]);
-
         return $processedMessages;
     }
 
     private function extractCityName(string $message): ?string
     {
         $message = trim($message);
-        Log::info("Intentando extraer ciudad de: '{$message}'");
         
         $stopWords = ['clima', 'tiempo', 'temperatura', 'cual', 'cuál', 'sera', 'será', 'es', 'el', 'la', 'los', 'las', 
                       'hoy', 'mañana', 'manana', 'ahora', 'ayer', 'esta', 'este', 'para', 'dame', 'dime'];
@@ -211,12 +163,10 @@ EOT;
                     continue;
                 }
                 
-                Log::info("✓ Ciudad extraída exitosamente: '{$cityName}'");
                 return $cityName;
             }
         }
 
-        Log::warning("✗ No se pudo extraer ciudad del mensaje: '{$message}'");
         return null;
     }
 
@@ -229,6 +179,10 @@ EOT;
             return "[DATOS METEOROLÓGICOS PARA: {$cityName}]\nNo hay datos disponibles.";
         }
         
+        // Interpretar el código del clima
+        $weatherCode = $current['weathercode'];
+        $condition = $this->interpretWeatherCode($weatherCode);
+        
         $formatted = "═══════════════════════════════════════\n";
         $formatted .= "📍 CIUDAD: {$cityName}\n";
         $formatted .= "🕐 CONSULTA: " . now()->format('Y-m-d H:i:s') . "\n";
@@ -236,14 +190,17 @@ EOT;
         
         $formatted .= "🌡️ CLIMA ACTUAL:\n";
         $formatted .= "  • Temperatura: {$current['temperature']}°C\n";
-        $formatted .= "  • Código clima: {$current['weathercode']}\n";
+        $formatted .= "  • Condición: {$condition}\n";
+        $formatted .= "  • Código clima: {$weatherCode}\n";
         $formatted .= "  • Velocidad viento: {$current['windspeed']} km/h\n";
         $formatted .= "  • Dirección viento: {$current['winddirection']}°\n";
         
         if ($daily) {
             $formatted .= "\n📅 PRONÓSTICO PRÓXIMOS DÍAS:\n";
             for ($i = 0; $i < min(3, count($daily['time'])); $i++) {
+                $dayCondition = $this->interpretWeatherCode($daily['weathercode'][$i]);
                 $formatted .= "  Día " . ($i + 1) . " ({$daily['time'][$i]}):\n";
+                $formatted .= "    - Condición: {$dayCondition}\n";
                 $formatted .= "    - Máxima: {$daily['temperature_2m_max'][$i]}°C\n";
                 $formatted .= "    - Mínima: {$daily['temperature_2m_min'][$i]}°C\n";
                 $formatted .= "    - Precipitación: {$daily['precipitation_sum'][$i]}mm\n";
@@ -253,5 +210,24 @@ EOT;
         $formatted .= "\n═══════════════════════════════════════\n";
         
         return $formatted;
+    }
+
+    private function interpretWeatherCode(int $code): string
+    {
+        return match(true) {
+            $code === 0 => 'Despejado ☀️',
+            $code >= 1 && $code <= 3 => 'Parcialmente nublado ⛅',
+            $code >= 45 && $code <= 48 => 'Niebla 🌫️',
+            $code >= 51 && $code <= 55 => 'Llovizna 🌦️',
+            $code >= 56 && $code <= 57 => 'Llovizna helada 🌨️',
+            $code >= 61 && $code <= 65 => 'Lluvia 🌧️',
+            $code >= 66 && $code <= 67 => 'Lluvia helada 🌨️',
+            $code >= 71 && $code <= 75 => 'Nieve ❄️',
+            $code === 77 => 'Granizo 🌨️',
+            $code >= 80 && $code <= 82 => 'Chubascos 🌧️',
+            $code >= 85 && $code <= 86 => 'Chubascos de nieve ❄️',
+            $code >= 95 && $code <= 99 => 'Tormenta ⛈️',
+            default => 'Desconocido',
+        };
     }
 }
